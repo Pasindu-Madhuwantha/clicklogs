@@ -1,0 +1,214 @@
+<html>
+
+<head>
+	<meta charset="utf8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+	<link rel="stylesheet" href="index.css">
+	<link href="https://fonts.googleapis.com/css?family=Open+Sans|Open+Sans+Condensed:300|Roboto" rel="stylesheet">
+	<link href='https://fonts.googleapis.com/css?family=Ek+Mukta:300' rel='stylesheet' type='text/css'>
+
+	<script type="text/javascript">
+
+		// ── session state ──────────────────────────────────────────
+		var uniqueIdentifier = 0;
+		var dependentVariable = "";
+		var tapLogsArray = [];
+
+		// ── per-variation state (reset between variations) ─────────
+		var tapCounter = 0;
+		var totalTouchDuration = 0;
+		var startTap = 0;
+		var endTap = 0;
+		var tapSessionStartTime = 0;
+		var isTapping = false;
+
+		// ── config ─────────────────────────────────────────────────
+		var tapLimit = 50;
+		var interfaceVariations = 2;
+		var interfaceSequence = 1;   // 1 = first round, 2 = second round
+		var showFeedback = false;
+
+		// ──────────────────────────────────────────────────────────
+		function onLoad() {
+			var d = new Date();
+
+			// randomly decide feedback mode for first variation
+			showFeedback = (d.getTime() % 2 === 0);
+
+			// unique session ID = timestamp + random number
+			uniqueIdentifier = d.getTime() + "" + Math.floor(Math.random() * 42);
+
+			console.log("onLoad | sessionID:", uniqueIdentifier, "| showFeedback:", showFeedback);
+
+			// attach tap listeners
+			var el = document.getElementById('tapHere');
+			["mousedown", "mouseup", "touchstart", "touchend"].forEach(function (evt) {
+				el.addEventListener(evt, tapityTap);
+			});
+		}
+
+		// ──────────────────────────────────────────────────────────
+		function saveDependentVariable(platform) {
+			dependentVariable = platform;
+			document.getElementById("buttoncontainer").style.display = "none";
+			document.getElementById("container").style.display = "inline-block";
+			console.log("Platform:", dependentVariable);
+		}
+
+		// ──────────────────────────────────────────────────────────
+		function tapityTap(tep) {
+			var te = tep.type;
+
+			// ── PRESS (down) ───────────────────────────────────────
+			if (te === "touchstart" || te === "mousedown") {
+				tep.preventDefault();
+
+				// block double-fire (touchstart + mousedown firing together)
+				if (isTapping) return;
+				isTapping = true;
+
+				startTap = Date.now();
+				if (tapSessionStartTime === 0) tapSessionStartTime = startTap;
+				return;
+			}
+
+			// ── RELEASE (up) ───────────────────────────────────────
+			if (te === "touchend" || te === "mouseup") {
+				tep.preventDefault();
+
+				// only process if we saw a matching press
+				if (!isTapping) return;
+				isTapping = false;
+
+				endTap = Date.now();
+				var duration = endTap - startTap;
+
+				// ignore bad readings
+				if (startTap === 0 || duration <= 0) {
+					startTap = 0; endTap = 0;
+					return;
+				}
+
+				// ── record tap ─────────────────────────────────────
+				tapCounter++;
+				totalTouchDuration += duration;
+				var mean = Math.round(totalTouchDuration / tapCounter);
+
+				var tap = {
+					tapSequenceNumber: tapCounter,
+					startTimestamp: startTap,
+					endTimestamp: endTap,
+					duration: duration,
+					interfaceSequence: interfaceSequence,
+					interface: showFeedback ? "feedbackshown" : "nofeedback"
+				};
+				tapLogsArray.push(JSON.stringify(tap));
+
+				console.log("Tap #" + tapCounter + " | " + duration + "ms | mean:" + mean + "ms | variation:" + interfaceSequence);
+
+				// show live mean only in feedback mode
+				if (showFeedback) {
+					document.getElementById("counter").innerHTML =
+						"Mean tap duration: <span class='spanTime'>" + mean + "</span> ms";
+				}
+
+				startTap = 0;
+				endTap = 0;
+
+				// ── check if variation is done ─────────────────────
+				if (tapCounter >= tapLimit) {
+					console.log("Variation " + interfaceSequence + " done. Total taps in array: " + tapLogsArray.length);
+
+					document.getElementById("tapHere").style.display = "none";
+					document.getElementById("counter").innerHTML =
+						'<span class="spanWhite">Mean tap duration: <span class="spanTime">' + mean + '</span> ms</span>';
+
+					if (interfaceSequence === 1) {
+						// first variation done — show Continue for second
+						document.getElementById("continue").style.display = "block";
+					} else {
+						// second variation done — send all data
+						console.log("Both variations done. Sending " + tapLogsArray.length + " taps...");
+						syncToServer();
+					}
+				}
+			}
+		}
+
+		// ──────────────────────────────────────────────────────────
+		// Called when user clicks Continue between variations
+		function startNext() {
+			console.log("startNext called — resetting for variation 2");
+
+			// advance variation number
+			interfaceSequence = 2;
+
+			// reset per-variation counters
+			tapCounter = 0;
+			totalTouchDuration = 0;
+			startTap = 0;
+			endTap = 0;
+			tapSessionStartTime = 0;
+			isTapping = false;
+
+			// flip feedback mode
+			showFeedback = !showFeedback;
+			console.log("Variation 2 | showFeedback:", showFeedback);
+
+			// update UI
+			document.getElementById("tapHere").style.display = "block";
+			document.getElementById("continue").style.display = "none";
+			document.getElementById("counter").innerHTML = "";
+		}
+
+		// ──────────────────────────────────────────────────────────
+		function syncToServer() {
+			console.log("syncToServer | taps:", tapLogsArray.length, "| id:", uniqueIdentifier, "| platform:", dependentVariable);
+
+			var xhr = new XMLHttpRequest();
+
+			xhr.onreadystatechange = function () {
+				if (xhr.readyState === 4) {
+					console.log("Server status:", xhr.status);
+					console.log("Server response:", xhr.responseText);
+
+					if (xhr.status === 200 && xhr.responseText.trim() === "Data saved successfully") {
+						document.getElementById("counter").innerHTML =
+							'<span class="spanWhite">✅ Done! Thank you. Data saved successfully.</span>';
+					} else {
+						document.getElementById("counter").innerHTML =
+							'<span class="spanWhite">Error ' + xhr.status + ': ' + xhr.responseText + '</span>';
+					}
+				}
+			};
+
+			var params = "id=" + encodeURIComponent(uniqueIdentifier) +
+				"&var=" + encodeURIComponent(dependentVariable) +
+				"&taps=[" + tapLogsArray.toString() + "]";
+
+			xhr.open("POST", "saveTaps.php", true);
+			xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+			xhr.send(params);
+		}
+
+	</script>
+</head>
+
+<body onload="onLoad()">
+	<div>
+		<div id="buttoncontainer">
+			<button type="button" onclick="saveDependentVariable('android')" id="variable1">Android</button>
+			<button type="button" onclick="saveDependentVariable('pc')" id="variable2">PC</button>
+		</div>
+		<div id="container" class="container">
+			<div id="counter"></div>
+			<div id="action"></div>
+			<button id="tapHere">
+				<img src="2x/round_touch_app_white_36dp.png" onerror="this.style.display='none'" />
+			</button>
+			<button id="continue" onclick="startNext()">Continue</button>
+		</div>
+	</div>
+</body>
+
+</html>
