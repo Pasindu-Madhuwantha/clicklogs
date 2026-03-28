@@ -14,7 +14,7 @@ let serviceAccount;
 if (process.env.FIREBASE_CREDENTIALS) {
     serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
 } else {
-    serviceAccount = require('./serviceAccount.json');
+    serviceAccount = require('../serviceAccount.json');
 }
 
 admin.initializeApp({
