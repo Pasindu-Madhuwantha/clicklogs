@@ -10,7 +10,13 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('.'));  // serves index.html and index.css
 
 // Initialize Firebase
-const serviceAccount = require('./serviceAccount.json');
+let serviceAccount;
+if (process.env.FIREBASE_CREDENTIALS) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+} else {
+    serviceAccount = require('./serviceAccount.json');
+}
+
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
 });
@@ -80,3 +86,5 @@ app.post('/saveTaps.php', async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+
+module.exports = app;
