@@ -1,8 +1,27 @@
 {
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/saveTaps.php",
-      "destination": "/api"
+      "src": "api/index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "index.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "2x/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/saveTaps.php",
+      "dest": "/api/index.js"
     }
   ]
 }
